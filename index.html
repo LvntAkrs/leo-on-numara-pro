@@ -1,1 +1,165 @@
 
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LEO ON NUMARA PRO</title>
+<style>
+body{margin:0;background:#101827;color:white;font-family:Arial;padding:18px}
+header{background:#164e63;padding:20px;border-radius:12px}
+h1{font-size:25px}
+.card{background:#1e293b;padding:16px;margin:15px 0;border-radius:12px}
+input,button{padding:12px;border-radius:8px;margin:5px 0;width:100%;box-sizing:border-box}
+input{background:#0f172a;color:white;border:1px solid #475569}
+button{background:#14b8a6;color:#06221d;border:0;font-weight:bold}
+.ball{display:inline-block;background:#164e63;border-radius:50%;padding:9px;margin:3px}
+small{color:#cbd5e1}
+</style>
+</head>
+<body>
+<header>
+<h1>LEO ON NUMARA PRO</h1>
+<p>Akıllı istatistik ve kolon analiz sistemi</p>
+</header>
+
+<div class="card">
+<h2>Çekiliş Ekle</h2>
+<input type="date" id="date">
+<input id="numbers" placeholder="22 sayıyı virgülle ayırarak yaz">
+<button onclick="addDraw()">Çekilişi Kaydet</button>
+<p id="message"></p>
+</div>
+
+<div class="card">
+<h2>Arşiv Bilgisi</h2>
+<p>Toplam çekiliş: <b id="total">0</b></p>
+<p>Son çekiliş: <b id="last">Henüz yok</b></p>
+</div>
+
+<div class="card">
+<h2>Sayı Analizi</h2>
+<select id="period" onchange="analyze()">
+<option value="10">Son 10 çekiliş</option>
+<option value="20">Son 20 çekiliş</option>
+<option value="50">Son 50 çekiliş</option>
+<option value="100">Son 100 çekiliş</option>
+<option value="500">Son 500 çekiliş</option>
+<option value="all">Tüm çekilişler</option>
+</select>
+<div id="analysis"></div>
+</div>
+
+<div class="card">
+<h2>10 Kolon Önerisi</h2>
+<button onclick="generate()">10 Kolon Oluştur</button>
+<div id="columns"></div>
+</div>
+
+<div class="card">
+<h2>Veri Aktarımı</h2>
+<input type="file" id="file" accept=".csv">
+<button onclick="importCSV()">CSV Dosyasını Yükle</button>
+<button onclick="exportCSV()">Verileri CSV İndir</button>
+</div>
+
+<p><small>Not: Çekilişler rastgeledir. İstatistikler gelecek sonuçları garanti etmez. Veriler bu cihazın tarayıcısında saklanır. Otomatik resmî veri bağlantısı sonraki aşamada eklenecektir.</small></p>
+
+<script>
+let draws=JSON.parse(localStorage.getItem("leoDraws")||"[]");
+
+function save(){
+localStorage.setItem("leoDraws",JSON.stringify(draws));
+refresh();
+}
+
+function addDraw(){
+let date=document.getElementById("date").value;
+let nums=document.getElementById("numbers").value.split(/[,; ]+/).map(Number).filter(Number.isFinite);
+if(!date||nums.length!==22||new Set(nums).size!==22||nums.some(n=>!Number.isInteger(n)||n<1||n>80)){
+document.getElementById("message").innerText="22 farklı sayı girilmelidir (1-80).";
+return;
+}
+if(draws.some(d=>d.date===date)){
+document.getElementById("message").innerText="Bu tarih zaten kayıtlı.";
+return;
+}
+draws.push({date,nums:nums.sort((a,b)=>a-b)});
+draws.sort((a,b)=>b.date.localeCompare(a.date));
+document.getElementById("numbers").value="";
+document.getElementById("message").innerText="Çekiliş kaydedildi.";
+save();
+}
+
+function refresh(){
+document.getElementById("total").innerText=draws.length;
+document.getElementById("last").innerText=draws[0]?.date||"Henüz yok";
+analyze();
+}
+
+function analyze(){
+let p=document.getElementById("period").value;
+let data=p==="all"?draws:draws.slice(0,Number(p));
+let freq=Array(81).fill(0);
+data.forEach(d=>d.nums.forEach(n=>freq[n]++));
+let sorted=Array.from({length:80},(_,i)=>i+1).sort((a,b)=>freq[b]-freq[a]);
+document.getElementById("analysis").innerHTML=
+"<p><b>En çok çıkanlar:</b></p>"+sorted.slice(0,10).map(n=>"<span class='ball'>"+n+" ("+freq[n]+")</span>").join("")+
+"<p><b>En az çıkanlar:</b></p>"+sorted.slice(-10).reverse().map(n=>"<span class='ball'>"+n+" ("+freq[n]+")</span>").join("");
+}
+
+function generate(){
+let freq=Array(81).fill(1);
+draws.slice(0,100).forEach(d=>d.nums.forEach(n=>freq[n]++));
+let html="";
+for(let i=1;i<=10;i++){
+let pool=Array.from({length:80},(_,j)=>j+1),col=[];
+while(col.length<10){
+let total=pool.reduce((s,n)=>s+freq[n],0);
+let r=Math.random()*total,chosen=pool[pool.length-1];
+for(let n of pool){r-=freq[n];if(r<=0){chosen=n;break;}}
+col.push(chosen);
+pool=pool.filter(n=>n!==chosen);
+}
+col.sort((a,b)=>a-b);
+html+="<p><b>Kolon "+i+":</b> "+col.join(" - ")+"</p>";
+}
+document.getElementById("columns").innerHTML=html;
+}
+
+function importCSV(){
+let file=document.getElementById("file").files[0];
+if(!file)return;
+let reader=new FileReader();
+reader.onload=function(){
+let lines=reader.result.split(/\r?\n/);
+let count=0;
+lines.slice(1).forEach(line=>{
+let p=line.split(/[;,]/);
+if(p.length<23)return;
+let date=p[0].trim(),nums=p.slice(1,23).map(Number);
+if(date&&nums.length===22&&new Set(nums).size===22&&nums.every(n=>Number.isInteger(n)&&n>=1&&n<=80)&&!draws.some(d=>d.date===date)){
+draws.push({date,nums:nums.sort((a,b)=>a-b)});count++;
+}
+});
+draws.sort((a,b)=>b.date.localeCompare(a.date));
+save();
+alert(count+" çekiliş eklendi.");
+};
+reader.readAsText(file);
+}
+
+function exportCSV(){
+let rows=["Tarih,"+Array.from({length:22},(_,i)=>"Sayı "+(i+1)).join(",")];
+draws.forEach(d=>rows.push(d.date+","+d.nums.join(",")));
+let blob=new Blob(["\uFEFF"+rows.join("\n")],{type:"text/csv;charset=utf-8"});
+let a=document.createElement("a");
+a.href=URL.createObjectURL(blob);
+a.download="LEO_On_Numara_Arsiv.csv";
+a.click();
+}
+
+refresh();
+</script>
+</body>
+</html>
